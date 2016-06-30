@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 from scipy.io import wavfile
 import argparse
@@ -83,8 +83,14 @@ def main():
         warnings.simplefilter('ignore')
 
     fps, sound = wavfile.read(args.wav.name)
+    keys = [k for k in args.keyboard.read().split('\n') if k]
+    if len(keys) != 36:
+        raise Exception("Number of keys must be exactly 36!")
+    key_idx_lookup = dict(zip(keys, range(0, 36)))
+    if len(key_idx_lookup) != 36:
+        raise Exception("There are duplicates in keyboard file!")
 
-    tones = range(-25, 25)
+    tones = range(-30, 31)
     sys.stdout.write('Transponding sound file... ')
     sys.stdout.flush()
     transposed_sounds = [pitchshift(sound, n) for n in tones]
@@ -95,30 +101,48 @@ def main():
     # For the focus
     screen = pygame.display.set_mode((150, 150))
 
-    keys = args.keyboard.read().split('\n')
     sounds = map(pygame.sndarray.make_sound, transposed_sounds)
-    key_sound = dict(zip(keys, sounds))
-    is_playing = {k: False for k in keys}
+    is_playing = [False for n in tones]
+#    key_sound = dict(zip(keys, sounds))
+#    is_playing = {k: False for k in keys}
 
     while True:
         event = pygame.event.wait()
 
         if event.type in (pygame.KEYDOWN, pygame.KEYUP):
             key = pygame.key.name(event.key)
+            if key not in key_idx_lookup:
+                if event.key == pygame.K_ESCAPE:
+                    pygame.quit()
+                    raise KeyboardInterrupt
+                else:
+                    continue
+            k_idx = key_idx_lookup[key]
+            k_grp = k_idx / 7
+            k_off = k_idx % 7
+            s_idx = 12 * k_grp
+            if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                if k_grp == 5 or k_off in [2, 6]:
+                    continue
+                elif k_off < 2:
+                    s_idx += 2 * k_off + 1
+                else:
+                    s_idx += 2 * k_off
+            else:
+                if k_off < 3:
+                    s_idx += 2 * k_off
+                else:
+                    s_idx += 2 * k_off - 1
 
         if event.type == pygame.KEYDOWN:
-            if (key in key_sound.keys()) and (not is_playing[key]):
-                key_sound[key].play(fade_ms=50)
-                is_playing[key] = True
+            print(s_idx)
+            if not is_playing[s_idx]:
+                sounds[s_idx].play(fade_ms=50)
+                is_playing[s_idx] = True
 
-            elif event.key == pygame.K_ESCAPE:
-                pygame.quit()
-                raise KeyboardInterrupt
-
-        elif event.type == pygame.KEYUP and key in key_sound.keys():
-            # Stops with 50ms fadeout
-            key_sound[key].fadeout(50)
-            is_playing[key] = False
+        elif event.type == pygame.KEYUP:
+            sounds[s_idx].fadeout(400)
+            is_playing[s_idx] = False
 
 
 if __name__ == '__main__':
